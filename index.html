@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ICFAI Attendance Sheet</title>
 <meta name="description" content="Simple, reusable attendance register for ICFAI MA classes. Works offline in the browser.">
+<meta name="theme-color" content="#1d4ed8">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Attendance">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
 :root{
   --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f5; --border:#dde1e7;
@@ -29,7 +38,9 @@
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top));display:flex;align-items:center;gap:12px}
+header .ttl{flex:1;min-width:0}
+.offline{background:var(--leave-bg);color:var(--leave);font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px}
 header h1{margin:0;font-size:18px}
 header .sub{color:var(--muted);font-size:13px}
 nav{display:flex;gap:4px;overflow-x:auto;background:var(--surface);border-bottom:1px solid var(--border);padding:0 12px;position:sticky;top:0;z-index:5}
@@ -73,6 +84,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .pill.P{background:var(--present-bg);color:var(--present)}
 .pill.A{background:var(--absent-bg);color:var(--absent)}
 .pill.L{background:var(--leave-bg);color:var(--leave)}
+.pill.N{background:var(--surface-2);color:var(--muted)}
 .tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
 table{border-collapse:collapse;width:100%;font-size:14px}
 th,td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
@@ -97,6 +109,11 @@ tr.low td{background:var(--warn-bg)}
   .sticky-bar{top:46px}
 }
 @media print{
+  :root,:root:not([data-theme="light"]),:root[data-theme="dark"]{
+    --bg:#fff; --surface:#fff; --surface-2:#f0f0f0; --border:#999; --text:#000; --muted:#333;
+    --present:#15803d; --present-bg:#fff; --absent:#b91c1c; --absent-bg:#fde8e8;
+    --leave:#a16207; --leave-bg:#fff; --warn-bg:#fde8e8;
+  }
   header,nav,.no-print,.toast{display:none!important}
   body{background:#fff;color:#000}
   .card{border:0;box-shadow:none;padding:0}
@@ -109,8 +126,12 @@ tr.low td{background:var(--warn-bg)}
 </head>
 <body>
 <header>
-  <h1 id="hdrTitle">ICFAI Attendance Sheet</h1>
-  <div class="sub" id="hdrSub"></div>
+  <div class="ttl">
+    <h1 id="hdrTitle">ICFAI Attendance Sheet</h1>
+    <div class="sub" id="hdrSub"></div>
+  </div>
+  <span class="offline hidden" id="offlineTag">Offline – still saving</span>
+  <button class="btn small primary hidden" id="installHdr">Install app</button>
 </header>
 <nav id="tabs">
   <button data-tab="take" class="active">✔ Take Attendance</button>
@@ -152,6 +173,7 @@ tr.low td{background:var(--warn-bg)}
       <span class="pill P" id="cP">0 P</span>
       <span class="pill A" id="cA">0 A</span>
       <span class="pill L" id="cL">0 L</span>
+      <span class="pill N hidden" id="cN" title="Students added after this class was taken">0 not marked</span>
       <span style="flex:1"></span>
       <input type="search" id="tFilter" placeholder="Find student…" style="min-height:34px;padding:4px 8px;width:150px">
       <button class="btn small" id="allP">All present</button>
@@ -265,6 +287,16 @@ tr.low td{background:var(--warn-bg)}
       <button class="btn danger" id="resetAll">Erase everything</button>
     </div>
   </div>
+  <div class="card" id="installCard">
+    <h2>Install as an app</h2>
+    <p class="hint" id="installHint">Add this to your home screen or desktop. It opens full-screen like a normal app and works without internet.</p>
+    <div class="row">
+      <button class="btn primary hidden" id="installBtn">Install app</button>
+    </div>
+    <p class="hint hidden" id="iosHint" style="margin-top:8px">On iPhone/iPad (Safari): tap the <b>Share</b> button <span aria-hidden="true">⬆︎</span>, then <b>Add to Home Screen</b>.</p>
+    <p class="hint hidden" id="otherHint" style="margin-top:8px">On Android (Chrome): open the <b>⋮</b> menu → <b>Install app</b> / <b>Add to Home screen</b>. On a computer (Chrome/Edge): click the install icon in the address bar.</p>
+    <p class="hint hidden" id="installedHint" style="margin-top:8px"><b class="done">✔ Installed.</b> You're using the app version.</p>
+  </div>
   <div class="card">
     <h2>Appearance</h2>
     <div class="row">
@@ -297,11 +329,29 @@ function fix(d){
   var b = blank();
   d.meta = Object.assign(b.meta, d.meta || {});
   d.students = d.students || []; d.subjects = d.subjects || []; d.sessions = d.sessions || [];
+  d.sessions.forEach(function(x){
+    // Compact form: x.m is a string with one letter per student, in student order ("." = not marked).
+    if(typeof x.m === "string"){
+      x.marks = {};
+      for(var k = 0; k < x.m.length && k < d.students.length; k++){ if(x.m[k] !== ".") x.marks[d.students[k].id] = x.m[k]; }
+      delete x.m;
+    }
+    x.marks = x.marks || {};
+  });
+  d.version = 1;
   return d;
 }
+// Saved in a compact form (about 15x smaller) so a whole year of a large class fits in browser storage.
+function pack(){
+  return JSON.stringify({ version:2, meta:S.meta, students:S.students, subjects:S.subjects,
+    sessions:S.sessions.map(function(x){
+      return { id:x.id, subjectId:x.subjectId, date:x.date, period:x.period,
+        m:S.students.map(function(st){ return x.marks[st.id] || "."; }).join("") };
+    }) });
+}
 function save(){
-  try{ localStorage.setItem(KEY, JSON.stringify(S)); }
-  catch(e){ toast("Could not save in this browser. Download a backup!"); }
+  try{ localStorage.setItem(KEY, pack()); }
+  catch(e){ toast("Could not save! Browser storage may be full or blocked. Download a backup now."); }
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
@@ -311,11 +361,26 @@ function shortDate(iso){ var p = iso.split("-"); return p[2] + "/" + p[1]; }
 var toastT;
 function toast(msg){ var t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(function(){ t.classList.remove("show"); }, 2200); }
 var collator = new Intl.Collator(undefined, {numeric:true, sensitivity:"base"});
-function sortedStudents(){ return S.students.slice().sort(function(a,b){ return collator.compare(a.roll || "~", b.roll || "~") || collator.compare(a.name, b.name); }); }
+function sortedStudents(){ return S.students.slice().sort(function(a,b){ return (!a.roll - !b.roll) || collator.compare(a.roll, b.roll) || collator.compare(a.name, b.name); }); }
 function subjName(sub){ return sub ? (sub.code ? sub.code + " – " : "") + sub.name : "(deleted subject)"; }
 function subjById(id){ return S.subjects.find(function(s){ return s.id === id; }); }
 function download(name, text, type){
-  var blob = new Blob([text], {type:type}); var a = document.createElement("a");
+  var blob = new Blob([text], {type:type});
+  // On iPhone/iPad, plain downloads are unreliable (especially in the installed app),
+  // so use the share sheet: "Save to Files", WhatsApp, Mail, etc.
+  if(isIOS && typeof File === "function" && navigator.canShare){
+    try{
+      var file = new File([blob], name, {type:type});
+      if(navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title:name}).catch(function(err){ if(err && err.name !== "AbortError") saveLink(name, blob); });
+        return;
+      }
+    }catch(e){}
+  }
+  saveLink(name, blob);
+}
+function saveLink(name, blob){
+  var a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
@@ -376,8 +441,8 @@ function renderTake(){
   $("sessTitle").textContent = subjName(subjById(sess.subjectId)) + " · " + fmtDate(sess.date) + (sess.period > 1 ? " · Lecture " + sess.period : "");
   var q = $("tFilter").value.trim().toLowerCase();
   var html = sortedStudents().filter(function(st){ return !q || (st.name + " " + st.roll).toLowerCase().indexOf(q) >= 0; }).map(function(st){
-    var v = sess.marks[st.id] || "P";
-    return '<div class="srow is-' + v + '" data-sid="' + st.id + '"><div class="who" data-toggle="1" style="cursor:pointer"><b>' + esc(st.name) + "</b><small>" + esc(st.roll) + '</small></div><div class="seg">' +
+    var v = sess.marks[st.id] || "";
+    return '<div class="srow' + (v ? " is-" + v : "") + '" data-sid="' + st.id + '"><div class="who" data-toggle="1" style="cursor:pointer"><b>' + esc(st.name) + "</b><small>" + esc(st.roll) + '</small></div><div class="seg">' +
       ["P","A","L"].map(function(k){ return '<button data-mark="' + k + '" class="' + (v === k ? "on-" + k : "") + '" aria-pressed="' + (v === k) + '" title="' + {P:"Present",A:"Absent",L:"Leave"}[k] + '">' + k + "</button>"; }).join("") +
       "</div></div>";
   }).join("");
@@ -385,9 +450,10 @@ function renderTake(){
   updateCounts(sess);
 }
 function updateCounts(sess){
-  var c = {P:0,A:0,L:0};
-  S.students.forEach(function(st){ c[sess.marks[st.id] || "P"]++; });
+  var c = {P:0,A:0,L:0,"":0};
+  S.students.forEach(function(st){ c[sess.marks[st.id] || ""]++; });
   $("cP").textContent = c.P + " P"; $("cA").textContent = c.A + " A"; $("cL").textContent = c.L + " L";
+  $("cN").textContent = c[""] + " not marked"; $("cN").classList.toggle("hidden", !c[""]);
 }
 function findSession(subjectId, date, period){
   return S.sessions.find(function(x){ return x.subjectId === subjectId && x.date === date && x.period === period; });
@@ -410,11 +476,11 @@ $("markList").addEventListener("click", function(e){
   var sess = S.sessions.find(function(x){ return x.id === current; }); if(!sess) return;
   var sid = row.dataset.sid, btn = e.target.closest("button[data-mark]");
   if(btn) sess.marks[sid] = btn.dataset.mark;
-  else if(e.target.closest("[data-toggle]")) sess.marks[sid] = (sess.marks[sid] || "P") === "A" ? "P" : "A";
+  else if(e.target.closest("[data-toggle]")) sess.marks[sid] = sess.marks[sid] === "P" ? "A" : "P";
   else return;
   save();
   var v = sess.marks[sid];
-  row.className = "srow is-" + v;
+  row.className = "srow" + (v ? " is-" + v : "");
   row.querySelectorAll("button[data-mark]").forEach(function(b){ var on = b.dataset.mark === v; b.className = on ? "on-" + v : ""; b.setAttribute("aria-pressed", on); });
   updateCounts(sess);
 });
@@ -459,8 +525,15 @@ $("regTable").addEventListener("click", function(e){
   var td = e.target.closest("td.c"); if(!td) return;
   var sess = S.sessions.find(function(x){ return x.id === td.dataset.sess; }); if(!sess) return;
   var order = ["P","A","L"], v = sess.marks[td.dataset.sid];
-  sess.marks[td.dataset.sid] = order[(order.indexOf(v) + 1) % 3];
-  save(); renderRegister();
+  v = sess.marks[td.dataset.sid] = order[(order.indexOf(v) + 1) % 3];
+  save();
+  // Update just this cell and the row totals (fast even for a full semester).
+  td.textContent = v; td.className = "c " + v;
+  var st = S.students.find(function(x){ return x.id === td.dataset.sid; }), tr = td.parentNode;
+  var c = tally(st, regSessions()), p = pct(c.P, c.A), low = p !== null && p < (+S.meta.threshold || 0);
+  tr.className = low ? "low" : "";
+  tr.cells[tr.cells.length - 2].textContent = c.P + "/" + (c.P + c.A);
+  var pc = tr.cells[tr.cells.length - 1]; pc.textContent = p === null ? "–" : p + "%"; pc.className = "num" + (low ? " low-txt" : "");
 });
 ["rSubject","rFrom","rTo"].forEach(function(id){ $(id).addEventListener("change", renderRegister); });
 $("rCsv").addEventListener("click", function(){
@@ -546,10 +619,15 @@ function parseLines(text){
     line = line.trim(); if(!line) return;
     var parts = line.indexOf("\t") >= 0 ? line.split("\t") : line.split(/\s*[,;]\s*/);
     parts = parts.map(function(p){ return p.replace(/^"|"$/g,"").trim(); }).filter(Boolean);
+    // Drop a leading serial-number column (e.g. "S.No | Roll No | Name").
+    if(parts.length >= 3 && /^\d{1,4}\.?$/.test(parts[0])) parts.shift();
     var roll = "", name = "";
     if(parts.length === 1) name = parts[0];
-    else if(/\d/.test(parts[0]) || !/\d/.test(parts[1])){ roll = parts[0]; name = parts[1]; }
-    else { name = parts[0]; roll = parts[1]; }
+    else {
+      var ri = parts.findIndex(function(p){ return /\d/.test(p); }); if(ri < 0) ri = 0;
+      roll = parts[ri];
+      name = parts.find(function(p, i){ return i !== ri && !/\d/.test(p); }) || parts[ri === 0 ? 1 : 0];
+    }
     if(/^(roll|s\.?\s*no|sl|name|student)/i.test(roll + name) && /name/i.test(line)) return; // header row
     if(addStudent(roll, name)) added++; else skipped++;
   });
@@ -571,8 +649,10 @@ $("stuList").addEventListener("click", function(e){
   var st = S.students.find(function(s){ return s.id === b.closest(".srow").dataset.sid; }); if(!st) return;
   if(b.dataset.act === "edit"){
     var roll = prompt("Roll number", st.roll); if(roll === null) return;
+    roll = roll.trim();
+    if(roll && S.students.some(function(s){ return s !== st && s.roll.toLowerCase() === roll.toLowerCase(); })){ toast("Roll no. " + roll + " is already used"); return; }
     var name = prompt("Name", st.name); if(name === null || !name.trim()) return;
-    st.roll = roll.trim(); st.name = name.trim(); save(); renderStudents();
+    st.roll = roll; st.name = name.trim(); save(); renderStudents();
   } else if(confirm("Remove " + st.name + "? Their attendance records will also be removed.")){
     S.students = S.students.filter(function(s){ return s !== st; });
     S.sessions.forEach(function(x){ delete x.marks[st.id]; });
@@ -667,6 +747,47 @@ $("loadSample").addEventListener("click", function(){
   }
   save(); render(); toast("Sample class loaded – erase it any time in Settings");
 });
+
+// Keep several open tabs / the installed app in sync, so one never overwrites another's changes.
+window.addEventListener("storage", function(e){
+  if(e.key !== KEY) return;
+  S = load();
+  if(current && !S.sessions.some(function(x){ return x.id === current; })) current = null;
+  render();
+});
+
+/* ---------- PWA: install, offline, storage ---------- */
+var deferredPrompt = null;
+var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function renderInstall(){
+  var can = !!deferredPrompt && !standalone;
+  $("installBtn").classList.toggle("hidden", !can);
+  $("installHdr").classList.toggle("hidden", !can);
+  $("installedHint").classList.toggle("hidden", !standalone);
+  $("iosHint").classList.toggle("hidden", standalone || !isIOS);
+  $("otherHint").classList.toggle("hidden", standalone || isIOS || can);
+}
+window.addEventListener("beforeinstallprompt", function(e){ e.preventDefault(); deferredPrompt = e; renderInstall(); });
+window.addEventListener("appinstalled", function(){ deferredPrompt = null; standalone = true; renderInstall(); toast("Installed! Open it from your home screen"); });
+function doInstall(){
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(function(){ deferredPrompt = null; renderInstall(); });
+}
+$("installBtn").addEventListener("click", doInstall);
+$("installHdr").addEventListener("click", doInstall);
+renderInstall();
+
+function renderOnline(){ $("offlineTag").classList.toggle("hidden", navigator.onLine !== false); }
+window.addEventListener("online", renderOnline); window.addEventListener("offline", renderOnline); renderOnline();
+
+// Ask the browser not to auto-delete saved attendance when space runs low.
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persisted().then(function(p){ if(!p) navigator.storage.persist(); }); }catch(e){}
+
+if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)){
+  window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
+}
 
 /* ---------- boot ---------- */
 var startTab = "take";

@@ -7,6 +7,15 @@ A simple attendance register for ICFAI MA classes. It's one file (`index.html`) 
 - **Quickest:** download `index.html` and double-click it.
 - **Online (recommended):** turn on GitHub Pages under repo **Settings → Pages → Deploy from branch → `main` / root**. Then open `https://ghostfreakxx.github.io/attendance-sheet-icfai/` on any phone or computer.
 
+## Install it as an app (works offline)
+
+Open the website link once, then:
+- **Android (Chrome):** tap **Install app** at the top of the page, or open the ⋮ menu → *Install app*.
+- **iPhone / iPad (Safari):** tap **Share** → **Add to Home Screen**.
+- **Computer (Chrome / Edge):** click **Install app**, or the install icon in the address bar.
+
+After that it opens from the home screen like a normal app and works without internet. If you're offline, an "Offline – still saving" tag appears. When you're online it picks up new versions automatically.
+
 ## First-time setup (2 minutes)
 
 1. **Subjects:** add each paper (code optional, e.g. `MA101 – Research Methodology`).
@@ -49,3 +58,7 @@ Data is stored **only in the browser you use** (it is not uploaded anywhere). So
 - Clearing browser data or using Incognito mode will lose it, so keep regular backups (for example, weekly).
 
 Each faculty member or class can keep a separate copy. Open it in a different browser, or save a copy of `index.html` for each class.
+
+## Testing
+
+See [TESTING.md](TESTING.md). Browser tests run automatically on every pull request.

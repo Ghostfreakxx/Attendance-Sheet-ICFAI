@@ -1,0 +1,5 @@
+# Only the app itself is deployed; tests and tooling stay in the repo.
+tests/
+.github/
+package.json
+TESTING.md
