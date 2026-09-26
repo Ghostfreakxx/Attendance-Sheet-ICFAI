@@ -14,9 +14,11 @@ let pass=0,fail=0; const ok=(c,m)=>{c?pass++:(fail++,console.log('FAIL:',m))};
  await p.click('#loadSample'); await p.reload(); await p.evaluate(()=>navigator.serviceWorker.ready);
  const cached = await p.evaluate(async()=>(await (await caches.open('icfai-attendance-v1')).keys()).map(r=>new URL(r.url).pathname));
  console.log('cached:',cached.join(' ')); ok(cached.includes('/index.html')&&cached.includes('/icons/icon-512.png'),'core cached');
+ ok(!(await p.isVisible('#offlineTag')),'offline tag hidden while online');
+ // Real-world case: the connection drops while the app is open.
  await ctx.setOffline(true);
+ ok(await p.waitForSelector('#offlineTag',{state:'visible',timeout:3000}).then(()=>true,()=>false),'offline tag appears when connection drops');
  await p.reload(); ok(await p.isVisible('#takeCard'),'loads offline with data');
- ok(await p.isVisible('#offlineTag'),'offline tag shown');
  await p.click('#tStart'); await p.click('#markList .srow:first-child button[data-mark=A]'); ok((await p.textContent('#cA')).startsWith('1'),'marking works offline');
  await p.goto('http://localhost:8765/?utm=x'); ok(await p.isVisible('#takeCard'),'offline with query string');
  await ctx.setOffline(false); await p.evaluate(()=>window.dispatchEvent(new Event('online')));
