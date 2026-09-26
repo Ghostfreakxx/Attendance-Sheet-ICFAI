@@ -329,11 +329,29 @@ function fix(d){
   var b = blank();
   d.meta = Object.assign(b.meta, d.meta || {});
   d.students = d.students || []; d.subjects = d.subjects || []; d.sessions = d.sessions || [];
+  d.sessions.forEach(function(x){
+    // Compact form: x.m is a string with one letter per student, in student order ("." = not marked).
+    if(typeof x.m === "string"){
+      x.marks = {};
+      for(var k = 0; k < x.m.length && k < d.students.length; k++){ if(x.m[k] !== ".") x.marks[d.students[k].id] = x.m[k]; }
+      delete x.m;
+    }
+    x.marks = x.marks || {};
+  });
+  d.version = 1;
   return d;
 }
+// Saved in a compact form (about 15x smaller) so a whole year of a large class fits in browser storage.
+function pack(){
+  return JSON.stringify({ version:2, meta:S.meta, students:S.students, subjects:S.subjects,
+    sessions:S.sessions.map(function(x){
+      return { id:x.id, subjectId:x.subjectId, date:x.date, period:x.period,
+        m:S.students.map(function(st){ return x.marks[st.id] || "."; }).join("") };
+    }) });
+}
 function save(){
-  try{ localStorage.setItem(KEY, JSON.stringify(S)); }
-  catch(e){ toast("Could not save in this browser. Download a backup!"); }
+  try{ localStorage.setItem(KEY, pack()); }
+  catch(e){ toast("Could not save! Browser storage may be full or blocked. Download a backup now."); }
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
@@ -347,7 +365,22 @@ function sortedStudents(){ return S.students.slice().sort(function(a,b){ return 
 function subjName(sub){ return sub ? (sub.code ? sub.code + " – " : "") + sub.name : "(deleted subject)"; }
 function subjById(id){ return S.subjects.find(function(s){ return s.id === id; }); }
 function download(name, text, type){
-  var blob = new Blob([text], {type:type}); var a = document.createElement("a");
+  var blob = new Blob([text], {type:type});
+  // On iPhone/iPad, plain downloads are unreliable (especially in the installed app),
+  // so use the share sheet: "Save to Files", WhatsApp, Mail, etc.
+  if(isIOS && typeof File === "function" && navigator.canShare){
+    try{
+      var file = new File([blob], name, {type:type});
+      if(navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title:name}).catch(function(err){ if(err && err.name !== "AbortError") saveLink(name, blob); });
+        return;
+      }
+    }catch(e){}
+  }
+  saveLink(name, blob);
+}
+function saveLink(name, blob){
+  var a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
@@ -492,8 +525,15 @@ $("regTable").addEventListener("click", function(e){
   var td = e.target.closest("td.c"); if(!td) return;
   var sess = S.sessions.find(function(x){ return x.id === td.dataset.sess; }); if(!sess) return;
   var order = ["P","A","L"], v = sess.marks[td.dataset.sid];
-  sess.marks[td.dataset.sid] = order[(order.indexOf(v) + 1) % 3];
-  save(); renderRegister();
+  v = sess.marks[td.dataset.sid] = order[(order.indexOf(v) + 1) % 3];
+  save();
+  // Update just this cell and the row totals (fast even for a full semester).
+  td.textContent = v; td.className = "c " + v;
+  var st = S.students.find(function(x){ return x.id === td.dataset.sid; }), tr = td.parentNode;
+  var c = tally(st, regSessions()), p = pct(c.P, c.A), low = p !== null && p < (+S.meta.threshold || 0);
+  tr.className = low ? "low" : "";
+  tr.cells[tr.cells.length - 2].textContent = c.P + "/" + (c.P + c.A);
+  var pc = tr.cells[tr.cells.length - 1]; pc.textContent = p === null ? "–" : p + "%"; pc.className = "num" + (low ? " low-txt" : "");
 });
 ["rSubject","rFrom","rTo"].forEach(function(id){ $(id).addEventListener("change", renderRegister); });
 $("rCsv").addEventListener("click", function(){
@@ -579,10 +619,15 @@ function parseLines(text){
     line = line.trim(); if(!line) return;
     var parts = line.indexOf("\t") >= 0 ? line.split("\t") : line.split(/\s*[,;]\s*/);
     parts = parts.map(function(p){ return p.replace(/^"|"$/g,"").trim(); }).filter(Boolean);
+    // Drop a leading serial-number column (e.g. "S.No | Roll No | Name").
+    if(parts.length >= 3 && /^\d{1,4}\.?$/.test(parts[0])) parts.shift();
     var roll = "", name = "";
     if(parts.length === 1) name = parts[0];
-    else if(/\d/.test(parts[0]) || !/\d/.test(parts[1])){ roll = parts[0]; name = parts[1]; }
-    else { name = parts[0]; roll = parts[1]; }
+    else {
+      var ri = parts.findIndex(function(p){ return /\d/.test(p); }); if(ri < 0) ri = 0;
+      roll = parts[ri];
+      name = parts.find(function(p, i){ return i !== ri && !/\d/.test(p); }) || parts[ri === 0 ? 1 : 0];
+    }
     if(/^(roll|s\.?\s*no|sl|name|student)/i.test(roll + name) && /name/i.test(line)) return; // header row
     if(addStudent(roll, name)) added++; else skipped++;
   });
@@ -604,8 +649,10 @@ $("stuList").addEventListener("click", function(e){
   var st = S.students.find(function(s){ return s.id === b.closest(".srow").dataset.sid; }); if(!st) return;
   if(b.dataset.act === "edit"){
     var roll = prompt("Roll number", st.roll); if(roll === null) return;
+    roll = roll.trim();
+    if(roll && S.students.some(function(s){ return s !== st && s.roll.toLowerCase() === roll.toLowerCase(); })){ toast("Roll no. " + roll + " is already used"); return; }
     var name = prompt("Name", st.name); if(name === null || !name.trim()) return;
-    st.roll = roll.trim(); st.name = name.trim(); save(); renderStudents();
+    st.roll = roll; st.name = name.trim(); save(); renderStudents();
   } else if(confirm("Remove " + st.name + "? Their attendance records will also be removed.")){
     S.students = S.students.filter(function(s){ return s !== st; });
     S.sessions.forEach(function(x){ delete x.marks[st.id]; });
@@ -699,6 +746,14 @@ $("loadSample").addEventListener("click", function(){
     });
   }
   save(); render(); toast("Sample class loaded – erase it any time in Settings");
+});
+
+// Keep several open tabs / the installed app in sync, so one never overwrites another's changes.
+window.addEventListener("storage", function(e){
+  if(e.key !== KEY) return;
+  S = load();
+  if(current && !S.sessions.some(function(x){ return x.id === current; })) current = null;
+  render();
 });
 
 /* ---------- PWA: install, offline, storage ---------- */

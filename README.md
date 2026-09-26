@@ -58,3 +58,7 @@ Data is stored **only in the browser you use** (it is not uploaded anywhere). So
 - Clearing browser data or using Incognito mode will lose it, so keep regular backups (for example, weekly).
 
 Each faculty member or class can keep a separate copy. Open it in a different browser, or save a copy of `index.html` for each class.
+
+## Testing
+
+See [TESTING.md](TESTING.md). Browser tests run automatically on every pull request.
