@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICFAI Attendance Sheet</title>
+<meta name="description" content="Simple, reusable attendance register for ICFAI MA classes. Works offline in the browser.">
+<style>
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f5; --border:#dde1e7;
+  --text:#1b1f24; --muted:#5f6b7a; --accent:#1d4ed8; --accent-text:#ffffff;
+  --present:#15803d; --present-bg:#dcfce7; --absent:#b91c1c; --absent-bg:#fee2e2;
+  --leave:#a16207; --leave-bg:#fef3c7; --warn-bg:#fff1f2;
+  --radius:10px; --shadow:0 1px 3px rgba(0,0,0,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1216; --surface:#171b21; --surface-2:#1f242c; --border:#2d343e;
+    --text:#e6e9ee; --muted:#9aa4b2; --accent:#6c9cff; --accent-text:#0b1020;
+    --present:#4ade80; --present-bg:#12321f; --absent:#f87171; --absent-bg:#3a1515;
+    --leave:#fbbf24; --leave-bg:#3a2c0b; --warn-bg:#2a1418; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1216; --surface:#171b21; --surface-2:#1f242c; --border:#2d343e;
+  --text:#e6e9ee; --muted:#9aa4b2; --accent:#6c9cff; --accent-text:#0b1020;
+  --present:#4ade80; --present-bg:#12321f; --absent:#f87171; --absent-bg:#3a1515;
+  --leave:#fbbf24; --leave-bg:#3a2c0b; --warn-bg:#2a1418; --shadow:none;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px}
+header h1{margin:0;font-size:18px}
+header .sub{color:var(--muted);font-size:13px}
+nav{display:flex;gap:4px;overflow-x:auto;background:var(--surface);border-bottom:1px solid var(--border);padding:0 12px;position:sticky;top:0;z-index:5}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:12px 10px;color:var(--muted);font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
+nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card h2{margin:0 0 4px;font-size:17px}
+.card h3{margin:16px 0 6px;font-size:15px}
+.hint{color:var(--muted);font-size:13px;margin:0 0 12px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:600}
+input,select,textarea{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-height:40px}
+textarea{width:100%;min-height:140px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn{font:inherit;font-weight:600;border-radius:8px;padding:8px 14px;min-height:40px;cursor:pointer;border:1px solid var(--border);background:var(--surface-2);color:var(--text)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.btn.danger{color:var(--absent);border-color:var(--absent)}
+.btn.small{padding:4px 10px;min-height:32px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0}
+.stat{background:var(--surface-2);border-radius:8px;padding:10px 12px}
+.stat b{display:block;font-size:22px}
+.stat span{color:var(--muted);font-size:12px}
+.list{border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.srow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)}
+.srow:last-child{border-bottom:0}
+.srow .who{flex:1;min-width:0}
+.srow .who b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .who small{color:var(--muted)}
+.srow.is-A{background:var(--absent-bg)}
+.srow.is-L{background:var(--leave-bg)}
+.seg{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0}
+.seg button{border:0;background:var(--surface);color:var(--muted);font:inherit;font-weight:700;width:44px;height:40px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button.on-P{background:var(--present);color:#fff}
+.seg button.on-A{background:var(--absent);color:#fff}
+.seg button.on-L{background:var(--leave);color:#fff}
+.sticky-bar{position:sticky;top:48px;z-index:4;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700}
+.pill.P{background:var(--present-bg);color:var(--present)}
+.pill.A{background:var(--absent-bg);color:var(--absent)}
+.pill.L{background:var(--leave-bg);color:var(--leave)}
+.tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+th{background:var(--surface-2);font-size:12px;color:var(--muted);position:sticky;top:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.c{text-align:center;cursor:pointer;font-weight:700;user-select:none}
+td.c.P{color:var(--present)} td.c.A{color:var(--absent);background:var(--absent-bg)} td.c.L{color:var(--leave)}
+tr.low td{background:var(--warn-bg)}
+.low-txt{color:var(--absent);font-weight:700}
+.empty{text-align:center;color:var(--muted);padding:24px}
+.steps{margin:8px 0 0;padding-left:20px}
+.steps li{margin:4px 0}
+.done{color:var(--present);font-weight:700}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20;max-width:90vw}
+.toast.show{opacity:1}
+.hidden{display:none!important}
+.print-head{display:none}
+@media (max-width:600px){
+  main{padding:12px}
+  .card{padding:12px}
+  .row>label,.row>.btn{flex:1 1 140px}
+  .sticky-bar{top:46px}
+}
+@media print{
+  header,nav,.no-print,.toast{display:none!important}
+  body{background:#fff;color:#000}
+  .card{border:0;box-shadow:none;padding:0}
+  .print-head{display:block;margin-bottom:8px}
+  .tablewrap{overflow:visible;border:0}
+  th{position:static}
+  th,td{border:1px solid #999;padding:3px 5px;font-size:11px}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="hdrTitle">ICFAI Attendance Sheet</h1>
+  <div class="sub" id="hdrSub"></div>
+</header>
+<nav id="tabs">
+  <button data-tab="take" class="active">✔ Take Attendance</button>
+  <button data-tab="register">📋 Register</button>
+  <button data-tab="reports">📊 Reports</button>
+  <button data-tab="students">👥 Students</button>
+  <button data-tab="subjects">📚 Subjects</button>
+  <button data-tab="settings">⚙ Settings &amp; Data</button>
+</nav>
+<main>
+
+<!-- TAKE ATTENDANCE -->
+<section id="tab-take">
+  <div class="card hidden" id="welcome">
+    <h2>Welcome 👋 Let's set up your class</h2>
+    <p class="hint">Everything is saved in this browser automatically. Nothing is uploaded anywhere.</p>
+    <ol class="steps">
+      <li id="stepSubjects">Add your subjects → <a href="#" data-go="subjects">Subjects</a></li>
+      <li id="stepStudents">Add your students (paste the list from Excel) → <a href="#" data-go="students">Students</a></li>
+      <li>Come back here and take attendance</li>
+    </ol>
+    <p class="hint" style="margin-top:12px">Just want to look around? <button class="btn small" id="loadSample">Load sample MA class</button></p>
+  </div>
+
+  <div class="card" id="takeCard">
+    <h2>Take attendance</h2>
+    <p class="hint">Pick the subject and date. Everyone starts as <b>Present</b>, so you only tap the absentees. Changes save instantly.</p>
+    <div class="row">
+      <label>Subject<select id="tSubject"></select></label>
+      <label>Date<input type="date" id="tDate"></label>
+      <label>Lecture no. (same day)<select id="tPeriod"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+      <button class="btn primary" id="tStart">Start</button>
+    </div>
+  </div>
+
+  <div id="sessionArea" class="hidden">
+    <div class="sticky-bar">
+      <span id="sessTitle" style="font-weight:700"></span>
+      <span class="pill P" id="cP">0 P</span>
+      <span class="pill A" id="cA">0 A</span>
+      <span class="pill L" id="cL">0 L</span>
+      <span style="flex:1"></span>
+      <input type="search" id="tFilter" placeholder="Find student…" style="min-height:34px;padding:4px 8px;width:150px">
+      <button class="btn small" id="allP">All present</button>
+      <button class="btn small" id="allA">All absent</button>
+      <button class="btn small danger" id="delSess">Delete</button>
+    </div>
+    <div class="list" id="markList"></div>
+    <p class="hint" style="margin-top:8px"><b>P</b> = Present · <b>A</b> = Absent · <b>L</b> = Leave / medical (not counted either way). Shortcut: tap a student's name to switch between P and A.</p>
+  </div>
+</section>
+
+<!-- REGISTER -->
+<section id="tab-register" class="hidden">
+  <div class="card">
+    <div class="print-head"><b id="prRegTitle"></b></div>
+    <h2 class="no-print">Register</h2>
+    <p class="hint no-print">Full date-by-date sheet for one subject. Click any cell to change it (P → A → L).</p>
+    <div class="row no-print" style="margin-bottom:12px">
+      <label>Subject<select id="rSubject"></select></label>
+      <label>From<input type="date" id="rFrom"></label>
+      <label>To<input type="date" id="rTo"></label>
+      <button class="btn" id="rCsv">Download CSV</button>
+      <button class="btn" onclick="window.print()">Print</button>
+    </div>
+    <div class="tablewrap" id="regTable"></div>
+  </div>
+</section>
+
+<!-- REPORTS -->
+<section id="tab-reports" class="hidden">
+  <div class="card">
+    <div class="print-head"><b id="prRepTitle"></b></div>
+    <h2 class="no-print">Attendance report</h2>
+    <p class="hint no-print">Percentage = Present ÷ (Present + Absent). Leave is not counted. Rows in red are below the minimum.</p>
+    <div class="row no-print">
+      <label>From<input type="date" id="pFrom"></label>
+      <label>To<input type="date" id="pTo"></label>
+      <label style="flex-direction:row;align-items:center;gap:6px;min-height:40px"><input type="checkbox" id="pLowOnly" style="min-height:auto"> Only below minimum</label>
+      <button class="btn" id="pCsv">Download CSV</button>
+      <button class="btn" onclick="window.print()">Print</button>
+    </div>
+    <div class="stats" id="pStats"></div>
+    <div class="tablewrap" id="repTable"></div>
+  </div>
+</section>
+
+<!-- STUDENTS -->
+<section id="tab-students" class="hidden">
+  <div class="card">
+    <h2>Add students in bulk</h2>
+    <p class="hint">Paste one student per line: <b>Roll No, Name</b>. You can copy two columns straight from Excel or Google Sheets. A line with only a name is fine too.</p>
+    <textarea id="bulk" placeholder="23MA001, Lalremruata&#10;23MA002, Priya Sharma&#10;23MA003, Rohan Das"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="bulkAdd">Add students</button>
+      <label class="btn" style="flex-direction:row;color:var(--text)">Import CSV file<input type="file" id="csvFile" accept=".csv,.txt" class="hidden"></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Class list <span class="hint" id="stuCount"></span></h2>
+    <div class="row" style="margin-bottom:10px">
+      <label>Roll No<input id="sRoll" placeholder="23MA004"></label>
+      <label style="flex:1">Name<input id="sName" placeholder="Student name"></label>
+      <button class="btn primary" id="sAdd">Add</button>
+    </div>
+    <div class="list" id="stuList"></div>
+  </div>
+</section>
+
+<!-- SUBJECTS -->
+<section id="tab-subjects" class="hidden">
+  <div class="card">
+    <h2>Subjects</h2>
+    <p class="hint">Add the papers/courses for this semester.</p>
+    <div class="row" style="margin-bottom:10px">
+      <label>Code (optional)<input id="subCode" placeholder="MA101"></label>
+      <label style="flex:1">Subject name<input id="subName" placeholder="e.g. Research Methodology"></label>
+      <button class="btn primary" id="subAdd">Add</button>
+    </div>
+    <div class="list" id="subList"></div>
+  </div>
+</section>
+
+<!-- SETTINGS -->
+<section id="tab-settings" class="hidden">
+  <div class="card">
+    <h2>Class details</h2>
+    <p class="hint">Shown at the top of the page and on printouts.</p>
+    <div class="row">
+      <label>Institution<input id="mInst"></label>
+      <label>Programme<input id="mProg"></label>
+      <label>Batch / Section<input id="mBatch" placeholder="2025–27, Sec A"></label>
+      <label>Semester<input id="mSem" placeholder="Semester I"></label>
+      <label>Faculty<input id="mFac" placeholder="Your name"></label>
+      <label>Minimum attendance %<input type="number" id="mThr" min="0" max="100"></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Backup &amp; move to another computer</h2>
+    <p class="hint">Data lives only in <b>this browser</b>. Download a backup regularly, and use Restore to open it on another device.</p>
+    <div class="row">
+      <button class="btn primary" id="backup">Download backup</button>
+      <label class="btn" style="flex-direction:row;color:var(--text)">Restore from backup<input type="file" id="restoreFile" accept=".json" class="hidden"></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Reuse for a new semester or batch</h2>
+    <p class="hint">Download a backup first. Then choose what to keep:</p>
+    <div class="row">
+      <button class="btn" id="newSem">New semester (same students, clear subjects &amp; attendance)</button>
+      <button class="btn" id="newBatch">New batch (keep subjects, clear students &amp; attendance)</button>
+      <button class="btn danger" id="resetAll">Erase everything</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Appearance</h2>
+    <div class="row">
+      <label>Theme<select id="theme"><option value="">Match device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    </div>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+var KEY = "icfai-attendance-v1";
+var $ = function(id){ return document.getElementById(id); };
+
+function blank(){
+  return { version:1,
+    meta:{ inst:"ICFAI University", prog:"MA", batch:"", sem:"", fac:"", threshold:75 },
+    students:[], subjects:[], sessions:[] };
+}
+var S = load();
+var current = null; // active session id in Take tab
+
+function load(){
+  try{ var raw = localStorage.getItem(KEY); if(raw){ var d = JSON.parse(raw); if(d && d.students) return fix(d); } }catch(e){}
+  return blank();
+}
+function fix(d){
+  var b = blank();
+  d.meta = Object.assign(b.meta, d.meta || {});
+  d.students = d.students || []; d.subjects = d.subjects || []; d.sessions = d.sessions || [];
+  return d;
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); }
+  catch(e){ toast("Could not save in this browser. Download a backup!"); }
+}
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function today(){ var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
+function fmtDate(iso){ var p = iso.split("-"); return p[2] + "/" + p[1] + "/" + p[0]; }
+function shortDate(iso){ var p = iso.split("-"); return p[2] + "/" + p[1]; }
+var toastT;
+function toast(msg){ var t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(function(){ t.classList.remove("show"); }, 2200); }
+var collator = new Intl.Collator(undefined, {numeric:true, sensitivity:"base"});
+function sortedStudents(){ return S.students.slice().sort(function(a,b){ return collator.compare(a.roll || "~", b.roll || "~") || collator.compare(a.name, b.name); }); }
+function subjName(sub){ return sub ? (sub.code ? sub.code + " – " : "") + sub.name : "(deleted subject)"; }
+function subjById(id){ return S.subjects.find(function(s){ return s.id === id; }); }
+function download(name, text, type){
+  var blob = new Blob([text], {type:type}); var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function csvCell(v){ v = String(v == null ? "" : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v; }
+function toCsv(rows){ return "﻿" + rows.map(function(r){ return r.map(csvCell).join(","); }).join("\r\n"); }
+function fileTag(){ return (S.meta.prog + "_" + (S.meta.batch || "") + "_" + (S.meta.sem || "")).replace(/[^\w-]+/g,"_").replace(/_+/g,"_").replace(/^_|_$/g,""); }
+function inRange(d, from, to){ return (!from || d >= from) && (!to || d <= to); }
+function pct(p, a){ return p + a === 0 ? null : Math.round(p * 1000 / (p + a)) / 10; }
+
+/* ---------- header & tabs ---------- */
+function renderHeader(){
+  var m = S.meta;
+  $("hdrTitle").textContent = (m.inst || "ICFAI") + " · " + (m.prog || "") + " Attendance";
+  $("hdrSub").textContent = [m.batch, m.sem, m.fac].filter(Boolean).join(" · ") || "Tip: add batch & semester in Settings";
+  document.title = (m.prog || "") + " Attendance – " + (m.inst || "ICFAI");
+}
+var tab = "take";
+function showTab(name){
+  tab = name;
+  document.querySelectorAll("#tabs button").forEach(function(b){ b.classList.toggle("active", b.dataset.tab === name); });
+  document.querySelectorAll("main > section").forEach(function(s){ s.classList.toggle("hidden", s.id !== "tab-" + name); });
+  try{ sessionStorage.setItem(KEY + "-tab", name); }catch(e){}
+  render();
+  window.scrollTo(0,0);
+}
+$("tabs").addEventListener("click", function(e){ var b = e.target.closest("button"); if(b) showTab(b.dataset.tab); });
+document.addEventListener("click", function(e){ var a = e.target.closest("[data-go]"); if(a){ e.preventDefault(); showTab(a.dataset.go); } });
+
+function fillSubjectSelect(sel, withAll){
+  var prev = sel.value;
+  sel.innerHTML = (withAll ? '<option value="">All subjects</option>' : "") +
+    S.subjects.map(function(s){ return '<option value="' + s.id + '">' + esc(subjName(s)) + "</option>"; }).join("");
+  if(prev && S.subjects.some(function(s){ return s.id === prev; })) sel.value = prev;
+}
+
+function render(){
+  renderHeader();
+  if(tab === "take") renderTake();
+  if(tab === "register") renderRegister();
+  if(tab === "reports") renderReports();
+  if(tab === "students") renderStudents();
+  if(tab === "subjects") renderSubjects();
+  if(tab === "settings") renderSettings();
+}
+
+/* ---------- take attendance ---------- */
+function renderTake(){
+  var ready = S.subjects.length && S.students.length;
+  $("welcome").classList.toggle("hidden", !!ready);
+  $("stepSubjects").classList.toggle("done", S.subjects.length > 0);
+  $("stepStudents").classList.toggle("done", S.students.length > 0);
+  $("takeCard").classList.toggle("hidden", !ready);
+  fillSubjectSelect($("tSubject"));
+  if(!$("tDate").value) $("tDate").value = today();
+  var sess = current && S.sessions.find(function(x){ return x.id === current; });
+  if(!sess || !ready){ current = null; $("sessionArea").classList.add("hidden"); updateStartBtn(); return; }
+  $("sessionArea").classList.remove("hidden");
+  $("sessTitle").textContent = subjName(subjById(sess.subjectId)) + " · " + fmtDate(sess.date) + (sess.period > 1 ? " · Lecture " + sess.period : "");
+  var q = $("tFilter").value.trim().toLowerCase();
+  var html = sortedStudents().filter(function(st){ return !q || (st.name + " " + st.roll).toLowerCase().indexOf(q) >= 0; }).map(function(st){
+    var v = sess.marks[st.id] || "P";
+    return '<div class="srow is-' + v + '" data-sid="' + st.id + '"><div class="who" data-toggle="1" style="cursor:pointer"><b>' + esc(st.name) + "</b><small>" + esc(st.roll) + '</small></div><div class="seg">' +
+      ["P","A","L"].map(function(k){ return '<button data-mark="' + k + '" class="' + (v === k ? "on-" + k : "") + '" aria-pressed="' + (v === k) + '" title="' + {P:"Present",A:"Absent",L:"Leave"}[k] + '">' + k + "</button>"; }).join("") +
+      "</div></div>";
+  }).join("");
+  $("markList").innerHTML = html || '<div class="empty">No matching students.</div>';
+  updateCounts(sess);
+}
+function updateCounts(sess){
+  var c = {P:0,A:0,L:0};
+  S.students.forEach(function(st){ c[sess.marks[st.id] || "P"]++; });
+  $("cP").textContent = c.P + " P"; $("cA").textContent = c.A + " A"; $("cL").textContent = c.L + " L";
+}
+function findSession(subjectId, date, period){
+  return S.sessions.find(function(x){ return x.subjectId === subjectId && x.date === date && x.period === period; });
+}
+function updateStartBtn(){
+  var sid = $("tSubject").value, d = $("tDate").value, p = +$("tPeriod").value;
+  var ex = sid && d && findSession(sid, d, p);
+  $("tStart").textContent = ex ? "Open (already taken)" : "Start";
+}
+["tSubject","tDate","tPeriod"].forEach(function(id){ $(id).addEventListener("change", function(){ current = null; renderTake(); }); });
+$("tStart").addEventListener("click", function(){
+  var sid = $("tSubject").value, d = $("tDate").value, p = +$("tPeriod").value;
+  if(!sid || !d){ toast("Pick a subject and date"); return; }
+  var sess = findSession(sid, d, p);
+  if(!sess){ sess = {id:uid(), subjectId:sid, date:d, period:p, marks:{}}; S.students.forEach(function(st){ sess.marks[st.id] = "P"; }); S.sessions.push(sess); save(); toast("Session started – everyone marked present"); }
+  current = sess.id; $("tFilter").value = ""; renderTake();
+});
+$("markList").addEventListener("click", function(e){
+  var row = e.target.closest(".srow"); if(!row) return;
+  var sess = S.sessions.find(function(x){ return x.id === current; }); if(!sess) return;
+  var sid = row.dataset.sid, btn = e.target.closest("button[data-mark]");
+  if(btn) sess.marks[sid] = btn.dataset.mark;
+  else if(e.target.closest("[data-toggle]")) sess.marks[sid] = (sess.marks[sid] || "P") === "A" ? "P" : "A";
+  else return;
+  save();
+  var v = sess.marks[sid];
+  row.className = "srow is-" + v;
+  row.querySelectorAll("button[data-mark]").forEach(function(b){ var on = b.dataset.mark === v; b.className = on ? "on-" + v : ""; b.setAttribute("aria-pressed", on); });
+  updateCounts(sess);
+});
+$("tFilter").addEventListener("input", renderTake);
+function setAll(v){ var sess = S.sessions.find(function(x){ return x.id === current; }); if(!sess) return; S.students.forEach(function(st){ sess.marks[st.id] = v; }); save(); renderTake(); }
+$("allP").addEventListener("click", function(){ setAll("P"); });
+$("allA").addEventListener("click", function(){ if(confirm("Mark everyone absent?")) setAll("A"); });
+$("delSess").addEventListener("click", function(){
+  if(!confirm("Delete this whole session? This cannot be undone.")) return;
+  S.sessions = S.sessions.filter(function(x){ return x.id !== current; }); current = null; save(); renderTake(); toast("Session deleted");
+});
+
+/* ---------- register ---------- */
+function regSessions(){
+  var sid = $("rSubject").value, from = $("rFrom").value, to = $("rTo").value;
+  return S.sessions.filter(function(x){ return x.subjectId === sid && inRange(x.date, from, to); })
+    .sort(function(a,b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : a.period - b.period; });
+}
+function sessLabel(x, full){ return (full ? fmtDate(x.date) : shortDate(x.date)) + (x.period > 1 ? " (" + x.period + ")" : ""); }
+function tally(st, list){
+  var c = {P:0,A:0,L:0};
+  list.forEach(function(x){ var v = x.marks[st.id]; if(v) c[v]++; });
+  return c;
+}
+function renderRegister(){
+  fillSubjectSelect($("rSubject"));
+  if(!S.subjects.length){ $("regTable").innerHTML = '<div class="empty">Add subjects first.</div>'; return; }
+  var list = regSessions(), thr = +S.meta.threshold || 0;
+  $("prRegTitle").textContent = S.meta.inst + " · " + S.meta.prog + " " + S.meta.batch + " " + S.meta.sem + " · Register: " + subjName(subjById($("rSubject").value));
+  if(!list.length){ $("regTable").innerHTML = '<div class="empty">No classes recorded for this subject yet.</div>'; return; }
+  var h = "<table><thead><tr><th>Roll</th><th>Name</th>" + list.map(function(x){ return '<th title="' + fmtDate(x.date) + '">' + sessLabel(x) + "</th>"; }).join("") + '<th class="num">Att.</th><th class="num">%</th></tr></thead><tbody>';
+  sortedStudents().forEach(function(st){
+    var c = tally(st, list), p = pct(c.P, c.A), low = p !== null && p < thr;
+    h += '<tr class="' + (low ? "low" : "") + '"><td>' + esc(st.roll) + "</td><td>" + esc(st.name) + "</td>" +
+      list.map(function(x){ var v = x.marks[st.id] || ""; return '<td class="c ' + v + '" data-sess="' + x.id + '" data-sid="' + st.id + '">' + (v || "–") + "</td>"; }).join("") +
+      '<td class="num">' + c.P + "/" + (c.P + c.A) + '</td><td class="num ' + (low ? "low-txt" : "") + '">' + (p === null ? "–" : p + "%") + "</td></tr>";
+  });
+  h += "</tbody></table>";
+  $("regTable").innerHTML = h;
+}
+$("regTable").addEventListener("click", function(e){
+  var td = e.target.closest("td.c"); if(!td) return;
+  var sess = S.sessions.find(function(x){ return x.id === td.dataset.sess; }); if(!sess) return;
+  var order = ["P","A","L"], v = sess.marks[td.dataset.sid];
+  sess.marks[td.dataset.sid] = order[(order.indexOf(v) + 1) % 3];
+  save(); renderRegister();
+});
+["rSubject","rFrom","rTo"].forEach(function(id){ $(id).addEventListener("change", renderRegister); });
+$("rCsv").addEventListener("click", function(){
+  var list = regSessions(); if(!list.length){ toast("Nothing to export"); return; }
+  var sub = subjById($("rSubject").value);
+  var rows = [["Roll No","Name"].concat(list.map(function(x){ return sessLabel(x, true); }), ["Present","Classes Counted","Leave","Percentage"])];
+  sortedStudents().forEach(function(st){
+    var c = tally(st, list), p = pct(c.P, c.A);
+    rows.push([st.roll, st.name].concat(list.map(function(x){ return x.marks[st.id] || ""; }), [c.P, c.P + c.A, c.L, p === null ? "" : p]));
+  });
+  download("Register_" + fileTag() + "_" + (sub.code || sub.name).replace(/[^\w-]+/g,"_") + ".csv", toCsv(rows), "text/csv");
+});
+
+/* ---------- reports ---------- */
+function reportData(){
+  var from = $("pFrom").value, to = $("pTo").value;
+  var sess = S.sessions.filter(function(x){ return inRange(x.date, from, to); });
+  var bySub = {}; S.subjects.forEach(function(s){ bySub[s.id] = []; });
+  sess.forEach(function(x){ if(bySub[x.subjectId]) bySub[x.subjectId].push(x); });
+  var rows = sortedStudents().map(function(st){
+    var tot = {P:0,A:0,L:0}, per = {};
+    S.subjects.forEach(function(s){ var c = tally(st, bySub[s.id]); per[s.id] = c; tot.P += c.P; tot.A += c.A; tot.L += c.L; });
+    return {st:st, per:per, tot:tot, pct:pct(tot.P, tot.A)};
+  });
+  return {rows:rows, bySub:bySub, held:sess.length};
+}
+function renderReports(){
+  var d = reportData(), thr = +S.meta.threshold || 0, lowOnly = $("pLowOnly").checked;
+  $("prRepTitle").textContent = S.meta.inst + " · " + S.meta.prog + " " + S.meta.batch + " " + S.meta.sem + " · Attendance report (minimum " + thr + "%)";
+  var withPct = d.rows.filter(function(r){ return r.pct !== null; });
+  var avg = withPct.length ? Math.round(withPct.reduce(function(a,r){ return a + r.pct; }, 0) / withPct.length * 10) / 10 : null;
+  var low = withPct.filter(function(r){ return r.pct < thr; }).length;
+  $("pStats").innerHTML =
+    '<div class="stat"><b>' + S.students.length + "</b><span>Students</span></div>" +
+    '<div class="stat"><b>' + d.held + "</b><span>Classes held</span></div>" +
+    '<div class="stat"><b>' + (avg === null ? "–" : avg + "%") + "</b><span>Class average</span></div>" +
+    '<div class="stat"><b class="' + (low ? "low-txt" : "") + '">' + low + "</b><span>Below " + thr + "%</span></div>";
+  if(!S.students.length){ $("repTable").innerHTML = '<div class="empty">Add students first.</div>'; return; }
+  var h = "<table><thead><tr><th>Roll</th><th>Name</th>" + S.subjects.map(function(s){ return '<th class="num" title="' + esc(s.name) + '">' + esc(s.code || s.name) + " (" + d.bySub[s.id].length + ")</th>"; }).join("") + '<th class="num">Overall</th><th class="num">%</th></tr></thead><tbody>';
+  var shown = 0;
+  d.rows.forEach(function(r){
+    var isLow = r.pct !== null && r.pct < thr; if(lowOnly && !isLow) return; shown++;
+    h += '<tr class="' + (isLow ? "low" : "") + '"><td>' + esc(r.st.roll) + "</td><td>" + esc(r.st.name) + "</td>" +
+      S.subjects.map(function(s){ var c = r.per[s.id], p = pct(c.P, c.A); return '<td class="num ' + (p !== null && p < thr ? "low-txt" : "") + '" title="' + c.P + "/" + (c.P + c.A) + '">' + (p === null ? "–" : p + "%") + "</td>"; }).join("") +
+      '<td class="num">' + r.tot.P + "/" + (r.tot.P + r.tot.A) + '</td><td class="num ' + (isLow ? "low-txt" : "") + '"><b>' + (r.pct === null ? "–" : r.pct + "%") + "</b></td></tr>";
+  });
+  h += "</tbody></table>";
+  $("repTable").innerHTML = shown ? h : '<div class="empty">' + (lowOnly ? "Nobody is below the minimum 🎉" : "No data yet.") + "</div>";
+}
+["pFrom","pTo","pLowOnly"].forEach(function(id){ $(id).addEventListener("change", renderReports); });
+$("pCsv").addEventListener("click", function(){
+  var d = reportData(), thr = +S.meta.threshold || 0;
+  var head = ["Roll No","Name"];
+  S.subjects.forEach(function(s){ var n = s.code || s.name; head.push(n + " Attended", n + " Held", n + " %"); });
+  head.push("Total Attended","Total Counted","Overall %","Status");
+  var rows = [head];
+  d.rows.forEach(function(r){
+    var row = [r.st.roll, r.st.name];
+    S.subjects.forEach(function(s){ var c = r.per[s.id], p = pct(c.P, c.A); row.push(c.P, c.P + c.A, p === null ? "" : p); });
+    row.push(r.tot.P, r.tot.P + r.tot.A, r.pct === null ? "" : r.pct, r.pct === null ? "" : r.pct < thr ? "SHORTAGE" : "OK");
+    rows.push(row);
+  });
+  download("Attendance_Report_" + fileTag() + ".csv", toCsv(rows), "text/csv");
+});
+
+/* ---------- students ---------- */
+function renderStudents(){
+  $("stuCount").textContent = "(" + S.students.length + ")";
+  var list = sortedStudents();
+  $("stuList").innerHTML = list.length ? list.map(function(st){
+    return '<div class="srow" data-sid="' + st.id + '"><div class="who"><b>' + esc(st.name) + "</b><small>" + (esc(st.roll) || "no roll no.") + '</small></div><button class="btn small" data-act="edit">Edit</button><button class="btn small danger" data-act="del">Remove</button></div>';
+  }).join("") : '<div class="empty">No students yet. Paste your class list above.</div>';
+}
+function addStudent(roll, name){
+  roll = (roll || "").trim(); name = (name || "").trim();
+  if(!name) return false;
+  if(roll && S.students.some(function(s){ return s.roll.toLowerCase() === roll.toLowerCase(); })) return false;
+  S.students.push({id:uid(), roll:roll, name:name}); return true;
+}
+function parseLines(text){
+  var added = 0, skipped = 0;
+  text.split(/\r?\n/).forEach(function(line){
+    line = line.trim(); if(!line) return;
+    var parts = line.indexOf("\t") >= 0 ? line.split("\t") : line.split(/\s*[,;]\s*/);
+    parts = parts.map(function(p){ return p.replace(/^"|"$/g,"").trim(); }).filter(Boolean);
+    var roll = "", name = "";
+    if(parts.length === 1) name = parts[0];
+    else if(/\d/.test(parts[0]) || !/\d/.test(parts[1])){ roll = parts[0]; name = parts[1]; }
+    else { name = parts[0]; roll = parts[1]; }
+    if(/^(roll|s\.?\s*no|sl|name|student)/i.test(roll + name) && /name/i.test(line)) return; // header row
+    if(addStudent(roll, name)) added++; else skipped++;
+  });
+  save(); renderStudents();
+  toast(added + " student(s) added" + (skipped ? ", " + skipped + " skipped (duplicate/blank)" : ""));
+}
+$("bulkAdd").addEventListener("click", function(){ parseLines($("bulk").value); $("bulk").value = ""; });
+$("csvFile").addEventListener("change", function(e){
+  var f = e.target.files[0]; if(!f) return;
+  var r = new FileReader(); r.onload = function(){ parseLines(String(r.result)); }; r.readAsText(f); e.target.value = "";
+});
+$("sAdd").addEventListener("click", function(){
+  if(addStudent($("sRoll").value, $("sName").value)){ save(); $("sRoll").value = ""; $("sName").value = ""; $("sRoll").focus(); renderStudents(); }
+  else toast("Enter a name (roll no. must be unique)");
+});
+$("sName").addEventListener("keydown", function(e){ if(e.key === "Enter") $("sAdd").click(); });
+$("stuList").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if(!b) return;
+  var st = S.students.find(function(s){ return s.id === b.closest(".srow").dataset.sid; }); if(!st) return;
+  if(b.dataset.act === "edit"){
+    var roll = prompt("Roll number", st.roll); if(roll === null) return;
+    var name = prompt("Name", st.name); if(name === null || !name.trim()) return;
+    st.roll = roll.trim(); st.name = name.trim(); save(); renderStudents();
+  } else if(confirm("Remove " + st.name + "? Their attendance records will also be removed.")){
+    S.students = S.students.filter(function(s){ return s !== st; });
+    S.sessions.forEach(function(x){ delete x.marks[st.id]; });
+    save(); renderStudents();
+  }
+});
+
+/* ---------- subjects ---------- */
+function renderSubjects(){
+  $("subList").innerHTML = S.subjects.length ? S.subjects.map(function(s){
+    var n = S.sessions.filter(function(x){ return x.subjectId === s.id; }).length;
+    return '<div class="srow" data-id="' + s.id + '"><div class="who"><b>' + esc(s.name) + "</b><small>" + (esc(s.code) || "no code") + " · " + n + ' classes recorded</small></div><button class="btn small" data-act="edit">Edit</button><button class="btn small danger" data-act="del">Remove</button></div>';
+  }).join("") : '<div class="empty">No subjects yet.</div>';
+}
+$("subAdd").addEventListener("click", function(){
+  var name = $("subName").value.trim(); if(!name){ toast("Enter a subject name"); return; }
+  S.subjects.push({id:uid(), code:$("subCode").value.trim(), name:name}); save();
+  $("subCode").value = ""; $("subName").value = ""; $("subCode").focus(); renderSubjects();
+});
+$("subName").addEventListener("keydown", function(e){ if(e.key === "Enter") $("subAdd").click(); });
+$("subList").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if(!b) return;
+  var s = subjById(b.closest(".srow").dataset.id); if(!s) return;
+  if(b.dataset.act === "edit"){
+    var code = prompt("Subject code", s.code); if(code === null) return;
+    var name = prompt("Subject name", s.name); if(name === null || !name.trim()) return;
+    s.code = code.trim(); s.name = name.trim(); save(); renderSubjects();
+  } else if(confirm('Remove "' + s.name + '" and all its attendance records?')){
+    S.subjects = S.subjects.filter(function(x){ return x !== s; });
+    S.sessions = S.sessions.filter(function(x){ return x.subjectId !== s.id; });
+    save(); renderSubjects();
+  }
+});
+
+/* ---------- settings ---------- */
+var metaMap = {mInst:"inst", mProg:"prog", mBatch:"batch", mSem:"sem", mFac:"fac", mThr:"threshold"};
+function renderSettings(){ Object.keys(metaMap).forEach(function(id){ $(id).value = S.meta[metaMap[id]]; }); }
+Object.keys(metaMap).forEach(function(id){
+  $(id).addEventListener("input", function(){
+    var v = $(id).value; if(id === "mThr") v = Math.max(0, Math.min(100, +v || 0));
+    S.meta[metaMap[id]] = v; save(); renderHeader();
+  });
+});
+$("backup").addEventListener("click", function(){
+  download("Attendance_Backup_" + fileTag() + "_" + today() + ".json", JSON.stringify(S, null, 1), "application/json");
+});
+$("restoreFile").addEventListener("change", function(e){
+  var f = e.target.files[0]; if(!f) return;
+  var r = new FileReader();
+  r.onload = function(){
+    try{
+      var d = JSON.parse(String(r.result));
+      if(!d || !Array.isArray(d.students) || !Array.isArray(d.sessions)) throw new Error("bad");
+      if(!confirm("Replace current data with this backup (" + d.students.length + " students, " + d.sessions.length + " classes)?")) return;
+      S = fix(d); current = null; save(); render(); toast("Backup restored");
+    }catch(err){ toast("That file is not a valid attendance backup"); }
+  };
+  r.readAsText(f); e.target.value = "";
+});
+$("newSem").addEventListener("click", function(){
+  if(!confirm("Start a new semester?\nKeeps: students, class details.\nClears: subjects and ALL attendance.\n\nDownload a backup first if you need the old records.")) return;
+  S.subjects = []; S.sessions = []; S.meta.sem = ""; current = null; save(); showTab("subjects"); toast("New semester ready – add subjects");
+});
+$("newBatch").addEventListener("click", function(){
+  if(!confirm("Start a new batch?\nKeeps: subjects, class details.\nClears: students and ALL attendance.\n\nDownload a backup first if you need the old records.")) return;
+  S.students = []; S.sessions = []; S.meta.batch = ""; current = null; save(); showTab("students"); toast("New batch ready – add students");
+});
+$("resetAll").addEventListener("click", function(){
+  if(!confirm("Erase EVERYTHING in this browser? This cannot be undone.")) return;
+  S = blank(); current = null; save(); showTab("take");
+});
+function applyTheme(v){ if(v) document.documentElement.setAttribute("data-theme", v); else document.documentElement.removeAttribute("data-theme"); }
+$("theme").addEventListener("change", function(){ var v = $("theme").value; applyTheme(v); try{ localStorage.setItem(KEY + "-theme", v); }catch(e){} });
+try{ var th = localStorage.getItem(KEY + "-theme") || ""; $("theme").value = th; applyTheme(th); }catch(e){}
+
+/* ---------- sample data ---------- */
+$("loadSample").addEventListener("click", function(){
+  var names = ["Lalremruata","Priya Sharma","Rohan Das","Zothansangi","Aditi Rao","Vanlalhriatpuii","Arjun Menon","Lalnunpuii","Sneha Iyer","Malsawmtluanga","Kiran Kumar","Rebecca Lalhmangaihi"];
+  S.meta.batch = S.meta.batch || "2025–27"; S.meta.sem = S.meta.sem || "Semester I";
+  names.forEach(function(n, i){ addStudent("25MA" + String(i + 1).padStart(3, "0"), n); });
+  [["MA101","Research Methodology"],["MA102","Literary Theory"],["MA103","Indian Writing in English"]].forEach(function(p){ S.subjects.push({id:uid(), code:p[0], name:p[1]}); });
+  var d = new Date();
+  for(var k = 14; k >= 1; k--){
+    var day = new Date(d.getTime() - k * 864e5); if(day.getDay() === 0) continue;
+    var iso = new Date(day.getTime() - day.getTimezoneOffset() * 6e4).toISOString().slice(0,10);
+    S.subjects.forEach(function(s, si){
+      if((k + si) % 2) return;
+      var sess = {id:uid(), subjectId:s.id, date:iso, period:1, marks:{}};
+      S.students.forEach(function(st, i){ var r = Math.random(); sess.marks[st.id] = r < (i % 5 === 2 ? 0.35 : 0.1) ? "A" : r > 0.97 ? "L" : "P"; });
+      S.sessions.push(sess);
+    });
+  }
+  save(); render(); toast("Sample class loaded – erase it any time in Settings");
+});
+
+/* ---------- boot ---------- */
+var startTab = "take";
+try{ startTab = sessionStorage.getItem(KEY + "-tab") || "take"; }catch(e){}
+if(!$("tab-" + startTab)) startTab = "take";
+showTab(startTab);
+})();
+</script>
+</body>
+</html>
