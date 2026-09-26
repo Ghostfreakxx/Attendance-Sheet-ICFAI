@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ICFAI Attendance Sheet</title>
 <meta name="description" content="Simple, reusable attendance register for ICFAI MA classes. Works offline in the browser.">
+<meta name="theme-color" content="#1d4ed8">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Attendance">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
 :root{
   --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f5; --border:#dde1e7;
@@ -29,7 +38,9 @@
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top));display:flex;align-items:center;gap:12px}
+header .ttl{flex:1;min-width:0}
+.offline{background:var(--leave-bg);color:var(--leave);font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px}
 header h1{margin:0;font-size:18px}
 header .sub{color:var(--muted);font-size:13px}
 nav{display:flex;gap:4px;overflow-x:auto;background:var(--surface);border-bottom:1px solid var(--border);padding:0 12px;position:sticky;top:0;z-index:5}
@@ -115,8 +126,12 @@ tr.low td{background:var(--warn-bg)}
 </head>
 <body>
 <header>
-  <h1 id="hdrTitle">ICFAI Attendance Sheet</h1>
-  <div class="sub" id="hdrSub"></div>
+  <div class="ttl">
+    <h1 id="hdrTitle">ICFAI Attendance Sheet</h1>
+    <div class="sub" id="hdrSub"></div>
+  </div>
+  <span class="offline hidden" id="offlineTag">Offline – still saving</span>
+  <button class="btn small primary hidden" id="installHdr">Install app</button>
 </header>
 <nav id="tabs">
   <button data-tab="take" class="active">✔ Take Attendance</button>
@@ -271,6 +286,16 @@ tr.low td{background:var(--warn-bg)}
       <button class="btn" id="newBatch">New batch (keep subjects, clear students &amp; attendance)</button>
       <button class="btn danger" id="resetAll">Erase everything</button>
     </div>
+  </div>
+  <div class="card" id="installCard">
+    <h2>Install as an app</h2>
+    <p class="hint" id="installHint">Add this to your home screen or desktop. It opens full-screen like a normal app and works without internet.</p>
+    <div class="row">
+      <button class="btn primary hidden" id="installBtn">Install app</button>
+    </div>
+    <p class="hint hidden" id="iosHint" style="margin-top:8px">On iPhone/iPad (Safari): tap the <b>Share</b> button <span aria-hidden="true">⬆︎</span>, then <b>Add to Home Screen</b>.</p>
+    <p class="hint hidden" id="otherHint" style="margin-top:8px">On Android (Chrome): open the <b>⋮</b> menu → <b>Install app</b> / <b>Add to Home screen</b>. On a computer (Chrome/Edge): click the install icon in the address bar.</p>
+    <p class="hint hidden" id="installedHint" style="margin-top:8px"><b class="done">✔ Installed.</b> You're using the app version.</p>
   </div>
   <div class="card">
     <h2>Appearance</h2>
@@ -675,6 +700,39 @@ $("loadSample").addEventListener("click", function(){
   }
   save(); render(); toast("Sample class loaded – erase it any time in Settings");
 });
+
+/* ---------- PWA: install, offline, storage ---------- */
+var deferredPrompt = null;
+var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function renderInstall(){
+  var can = !!deferredPrompt && !standalone;
+  $("installBtn").classList.toggle("hidden", !can);
+  $("installHdr").classList.toggle("hidden", !can);
+  $("installedHint").classList.toggle("hidden", !standalone);
+  $("iosHint").classList.toggle("hidden", standalone || !isIOS);
+  $("otherHint").classList.toggle("hidden", standalone || isIOS || can);
+}
+window.addEventListener("beforeinstallprompt", function(e){ e.preventDefault(); deferredPrompt = e; renderInstall(); });
+window.addEventListener("appinstalled", function(){ deferredPrompt = null; standalone = true; renderInstall(); toast("Installed! Open it from your home screen"); });
+function doInstall(){
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(function(){ deferredPrompt = null; renderInstall(); });
+}
+$("installBtn").addEventListener("click", doInstall);
+$("installHdr").addEventListener("click", doInstall);
+renderInstall();
+
+function renderOnline(){ $("offlineTag").classList.toggle("hidden", navigator.onLine !== false); }
+window.addEventListener("online", renderOnline); window.addEventListener("offline", renderOnline); renderOnline();
+
+// Ask the browser not to auto-delete saved attendance when space runs low.
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persisted().then(function(p){ if(!p) navigator.storage.persist(); }); }catch(e){}
+
+if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)){
+  window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
+}
 
 /* ---------- boot ---------- */
 var startTab = "take";
